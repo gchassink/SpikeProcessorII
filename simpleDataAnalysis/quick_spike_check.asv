@@ -1,0 +1,157 @@
+%% quick_spike_check
+% very crude spike analyser
+% sorts and shows spikes according to their electrodenumber (in contrast to display
+% number)
+clear all
+close all
+
+[file,path]= uigetfile
+Ts_tot=[];Cs_tot=[];Ns_tot=[];Us_tot=[];
+files= dir (fullfile(path , '*.mat'));
+for i= 1:size (files,1)
+    bestand=files(i).name;bestand
+    load ([files(i).folder '\' files(i).name]);
+    artefact=1;
+    if artefact==1
+        disp('Detecting artifacts...');
+        [normalWaveformIndices, artifactWaveformIndices, Ts, Us, artifactFlag] = detect_artifacts(Cs, Ts, Us, FileInfo.Samplerate);
+        discard= find(artifactFlag==-1 | artifactFlag==-4  | artifactFlag==-5 | artifactFlag==-7);
+        Cs(discard)=[];Ts(discard)=[];Ns(discard)=[];Us(discard,:)=[];
+    end
+          
+    Ts_tot=[Ts_tot; Ts];Cs_tot=[Cs_tot; Cs];Ns_tot=[Ns_tot; Ns];Us_tot=[Us_tot; Us]; firingRate=[];
+
+end
+figure;plot(Ts_tot);
+
+[Ts, idx]= sort(Ts_tot);Cs=Cs_tot(idx);Ns=Ns_tot(idx);Us=Us_tot(idx,:);
+figure;plot(Ts);
+% electrodes=sort(unique(Cs));
+% if length (electrodes) < 70 % single well data
+%     figure;
+%     for EL=1:length(electrodes)
+%         subplot(8,8,EL);
+%         index=find(Cs==electrodes(EL));
+%         length(index)/length(Ts);
+%         UsEL=Us(index,:);
+% 
+%         electrodes(EL)
+%         plot(mean(UsEL,1)); hold on
+%         
+% 
+%         title(electrodes(EL));
+%         pause(0.01);
+%         %ylim([-300 100]);
+% 
+%         %for i = 100:100:size(UsEL,1)
+% 
+%         %plot(UsEL(i-99:i,:)');
+%         %mean(UsEL ,1)
+% 
+%         %pause
+% 
+%         %end
+% 
+%         UsEL=[];
+% 
+% 
+%     end
+% else
+%    AWFR=[];
+% 
+%     wellname=["A1", "B1" ,"A2" "B2", "A3", "B3", "A4", "B4", "A5", "B5", "A6", "B6", "C6", "D6", "C5", "D5", "C4", "D4", "C3", "D3", "C2", "D2", "C1", "D1"];
+%     for well=1:12:max(electrodes)
+%         wellname((well+11)/12)
+%            
+%      %if wellname((well+11)/12)== 'B2' || wellname((well+11)/12)== 'A4' || wellname((well+11)/12)== 'B5' || wellname((well+11)/12)== 'D4'    
+%          timeWindowIndex=[];meanUs=[];firingRate=[];spikeIndex=[];time=[];
+%             t=figure('units','normalized','outerposition',[0 0 1 1]);
+%             t=tiledlayout(4,3);
+%             t.TileSpacing = 'compact';
+%             t.Padding = 'compact';
+%             sgtitle(wellname((well+11)/12));
+%           i=0;
+%             for electrode=0:11
+%               spikeIndex=find(Cs==(well+electrode));
+% 
+%             nexttile
+%            
+%            
+%            
+%             step=3600*1*FileInfo.Samplerate;
+%             for time=0:step:max(Ts)%6 10 minute periodes
+%                 i=i+1
+%                 yyaxis left;
+%                 timeWindowIndex=find(Ts(spikeIndex) > time & Ts(spikeIndex) < (time+step));
+%                 meanUs=mean(Us(timeWindowIndex,:),1);
+%                 if ~isempty (Us(timeWindowIndex,:))
+%                     %
+%                     plot((1:length(meanUs))+(length(meanUs)*(i-1)*1.1), meanUs, 'k', 'LineStyle','-','Marker','none');% 'LineWidth', 2,'Color', [ i/25, 1-i/25,0]);
+%                     ylim([-100 100])
+%                     hold on
+%                     firingRate(i)=length(timeWindowIndex)/(step/(3600*FileInfo.Samplerate));
+%                     %noise(i)=mean(Ns(timeWindowIndex));
+%                     Amplitude=Us(timeWindowIndex,51);
+%                     [A, edges]=histcounts(Amplitude, [-75:5:75]);
+%                     yyaxis right; %ylim([0 1000])
+% 
+%                     [M idx]=max(A);
+%                     modeAmplitude(i)=edges(idx);
+%                     modeAllAmplitude(well+i-1)=edges(idx);
+%                     bar((edges(1:length(A))+(length(meanUs)*5*(i-1)*1.1))/5, A);
+%                     %ylim([0 120]);
+%                 else
+%                     firingRate(i)=0;
+% 
+%                 end
+%             end
+%             
+%         
+%              ylim([-200 100])
+%           
+%                if i>1
+%                    yyaxis left
+%                            
+%                     plot ((length(meanUs)*(i-1)*1.1)/length(firingRate)/3:(length(meanUs)*(i-1)*1.1)/length(firingRate):(length(meanUs)*(i-1)*1.1), firingRate,'LineWidth',2);
+%                     hold on
+%                     yyaxis right
+%                     plot ((length(meanUs)*(i-1)*1.1)/length(modeAmplitude)/3:(length(meanUs)*(i-1)*1.1)/length(modeAmplitude):(length(meanUs)*(i-1)*1.1), modeAmplitude,'LineWidth',2);
+%                     Amplitude=Us(spikeIndex,51);
+%                     %modeAllAmplitude(well+i-1)=edges(idx);
+%                     hold off
+%            %         AWFR=[AWFR; firingRate];
+%                     firingRate=[];
+%                else
+%                    disp('no data!')
+%                    well/12
+%                    electrode+1
+%                    wellname((well+11)/12);
+%                end
+%              
+%         end
+%         drawnow
+%     %end
+%     end
+%  end
+% figure;bar(modeAllAmplitude);
+% U=Us(:,51);
+% [U2, edges]=histcounts(U, [-100:5:100]);
+% figure;bar(edges(1:length(U2)),U2);
+% figure;bar(mean(AWFR,1));
+%  nAWFR=AWFR./AWFR(:,5);
+%  figure; bar(mean(nAWFR,1));
+% 
+% %subplot(8,8,64);
+% %figure;
+% % plot(diff(Ts));
+% % figure;
+% % plot(Ts/double(FileInfo.Samplerate),Cs,'.');
+% 
+% % for i=1:length(Ts)
+% %     TsCs(i, Cs(i))=Ts(i)/25000;
+% % end
+% %length(Ts(Cs==88))
+% %artifactTimes=Ts(Cs==87);
+% %delayTimes=artifactTimes-stimTimes;
+% 
+    

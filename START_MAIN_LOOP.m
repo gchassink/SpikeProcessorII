@@ -1,0 +1,190 @@
+%% START_MAIN_LOOP
+% Contains the mail loop of the reading interfase. Spike (WRITEDATA) and raw data (WRITE_RAW) can be saved, and several types of live 
+% information graphs (UPDATE_RASTER, UPDATE_STIM_RESP_PLOT, UPDATE_WAVEPLOT, WRITE_RAW, WRITEDATA) can be selected. 
+global test Devices System FileInfo Figures Tmr % t= timer do not delete!
+ErrorStatus=1;
+Ts=[]; Cs=[]; Us=[]; Ns=[]; TsStim=[]; CsStim=[]; UsStim=[]; NsStim=[]; 
+TsBuffered=[]; CsBuffered=[]; UsBuffered=[]; NsBuffered=[];
+% Preallocate for speed RawBuffered=zeros(188,25000)
+%RawBuffered=[];Raw2Buffered=[];% intitiate local loop variables
+
+RawBuffered=zeros(System.ChannelsUsed, FileInfo.Samplerate);
+Raw2Buffered=zeros(System.ChannelsAvailable-System.ChannelsUsed, FileInfo.Samplerate); loopStep=1;
+FileInfo.TemperatureLog=[];%(1,1)=0;FileInfo.TemperatureLog(1,2)=0;FileInfo.TemperatureLog(1,3)=0;
+%triggerTime=[];detectionTime=[];
+FileInfo.incToc=0;FileInfo.latency=0;% for debugging only!
+
+while System.exit==0
+    
+    %drawnow
+   % pause(0.0001)
+
+    if System.dacqstatus==1 %1 = not running, not recoring
+        keepInIdleState
+        drawnow
+    end
+
+    %% start button pressed
+ 
+    if System.dacqstatus>1 % collect data
+        
+    
+   
+        % update cycle info
+               FileInfo.RecordingTime=FileInfo.RecordingTime+double(System.blocksize); % increment recording time for next loop
+        
+               Ts=[]; Cs=[]; Us=[]; Ns=[]; TsStim=[]; CsStim=[]; UsStim=[]; NsStim=[];% clear previous data chuncks from memory
+        
+        % read data from device and format in the proper way
+        
+        readDataFromDevice;
+        FileInfo.latency(end+1)=latency;
+
+        % Estimate the noise per channel every second
+        if mod(FileInfo.RecordingTime,FileInfo.Samplerate)==0 && FileInfo.RecordingTime>0% && System.type ~= 10
+            [System.noisevalues ,rmsmatr] =estimate_noise(double(RawBuffered)*FileInfo.ResolutionPerDigit,System.ChannelsUsed,FileInfo.NoiseAdaptability,0.01,System.max_noise_estimation_entries,1000*(FileInfo.ResolutionPerDigit),rmsmatr);
+        end
+
+        % Spike detection, Stimulation detection deping on loopsize
+        if freeRingBuffer>25% && System.type ~= 10
+            extractSpikesFromData;
+            
+        else
+           % in case of overload
+                logError('Losing spike data!!... clearing ringbuffer') % shows that detect spikes cycles have been missed
+                freeRingBuffer
+                Devices.dacq.ClearBuffers(); % uncomment to make this to clear ringbuffer as well
+                remainingframes=Devices.dacq.ChannelBlock_AvailFrames(0); % see how much data is left in the buffer of the device
+                freeRingBuffer=100-(100*double(remainingframes)/double(System.queuesize));
+                freeRingBuffer
+        end
+
+        % in case of unrealistically high spike numbers (> 100 spikes/s second per electrode)
+        if freeRingBuffer<50 && length(CsBuffered)>200*System.ChannelsUsed % Risk of buffer overflow
+            System.noisevalues(:)=400;% reset noise values
+            rmsmatr(:,:)=400; % fast way to get noise estimate high again
+            logError('Unrealistically high spikecount (mean >200 spikes/s per channel), resetting noise levels to 400 uV')
+        end
+
+        % update text in figure
+        set( findobj(Figures.fig.Children,'Tag','channelnum'),'String',['Selected channel: ' int2str(FileInfo.channelorder(System.channeldisp))]);
+        set( findobj(Figures.fig.Children,'Tag','estimnoise'),'String',['Estimated noise in channel: ' num2str(System.noisevalues(System.channeldisp),5) ' ' char(181) 'V']);
+        set( findobj(Figures.fig.Children,'Tag','chanspikes'),'String',['Spikes detected in channel: ' int2str(System.Channelspikes(FileInfo.channelorder(System.channeldisp)))]);
+        
+        if System.plottype == 1 % No updates, clear memory of other plots
+            Ras=[];
+            Waves=[];
+            set( findobj(Figures.fig.Children,'Tag','framesinbuf'),'String',['latency : ' num2str(latency) ' ms' ]);
+            pause(0.0001)
+        else
+            %% change log behavior here
+            if isfield (Devices, 'tcxStatus')  || isfield (Devices, 'TC02Status')
+                %if  mod(FileInfo.RecordingTime,(FileInfo.Samplerate/10))==0 && System.loopSize>10
+                getTemperatureReadings
+                %end
+            end
+            if mod(FileInfo.RecordingTime,FileInfo.Samplerate)==0 && FileInfo.RecordingTime>0 % update figure plots once every second
+                if freeRingBuffer>50 % plotting is the first to skip upon buffer overfill problems
+                    set(0, 'CurrentFigure', Figures.fig);
+                    if System.loopSize>10
+                        if isfield (Devices, 'tcxStatus')  || isfield (Devices, 'TC02Status')
+                            set( findobj(Figures.fig.Children,'Tag','temperature'),'String',['Temperature ' num2str(TemperatureLog(1,1))]);
+
+                            if int32(TemperatureLog(1,1))~=FileInfo.SetTemperature/10 && mod(FileInfo.RecordingTime,FileInfo.Samplerate*60)==0 % once per minute
+                                logError( 'temperatureproblem!');
+
+                                if Devices.tcx.GetSetpoint(uint32(0))~=FileInfo.SetTemperature && isfield (Devices, 'tcxStatus')
+                                    Devices.tcx.SetSetpoint(uint32(0),int32(FileInfo.SetTemperature));
+                                end
+                            end
+                        end
+                    end
+                    %figure(Figures.fig);
+                    plot_data; % plot the data
+                end
+                set( findobj(Figures.fig.Children,'Tag','framesinbuf'),'String',['latency : ' num2str(latency) ' ms' ]);
+                drawnow
+            end
+        end
+
+         set( findobj(Figures.fig.Children,'Tag','time'),'String',['Total recording time: ' int2str(FileInfo.RecordingTime/FileInfo.Samplerate) ' s']);
+            set( findobj(Figures.fig.Children,'Tag','totspikes'),'String',['Spikes in recording: ' int2str(totalspikes)]);
+
+        %% recording is ON stimulation is possible
+        if System.dacqstatus==3
+            totalspikes=totalspikes+length(Cs);
+
+            % keep updating the freeRingBuffer and  timer on screen just to show the system is still running
+           
+            % either or not execute accessory functions
+            if freeRingBuffer>25
+                
+                if test>0 
+                    
+                    FileInfo.testButtonWasPressed=1;
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    %%%  insert test button dependent script here  %%%
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    %initiateGame
+                    %
+                    % startStimulationLatencyTest
+                    %
+                end
+                
+
+                update_stim_info;
+                 
+                %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                %%%   insert other accessory functions here    %%%
+                %%% e.g. feedback loops with blocksize latency %%%
+                %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                %playGame
+               %detect_stimulation_latency
+               
+               
+            else
+                logError('Heavy system load, losing stimulation data!')
+            end
+            
+            % save data in the proper files
+            if mod(FileInfo.RecordingTime,FileInfo.Samplerate)==0 && FileInfo.RecordingTime>0
+                
+                update_incubator();
+                
+               
+                update_files(TsBuffered,CsBuffered,UsBuffered,NsBuffered,RawBuffered);
+                
+            end
+
+
+        end
+        loopStep=loopStep+1;% increase loop counter for Rawbuffer
+        % clear buffers after 1 second
+        if mod(FileInfo.RecordingTime,FileInfo.Samplerate)==0 && FileInfo.RecordingTime>0
+            TsLast=TsBuffered;CsLast=CsBuffered;
+            TsBuffered=[]; CsBuffered=[]; UsBuffered=[]; NsBuffered=[]; loopStep=1;% RawBuffered=[];Raw2Buffered=[];% clear previous data chuncks from memory
+            FileInfo.TemperatureLog=[];
+        end
+
+        %2 = running, not recording
+        if System.dacqstatus==2 && System.Replayer==0
+            if mod(FileInfo.RecordingTime,FileInfo.Samplerate)==0 && FileInfo.RecordingTime>0
+                FileInfo.RecordingTime=double(0);
+                Totalspikes=0;
+            end
+        end
+   
+    end
+
+    % check if there was an error of the dacq
+    if ErrorStatus==0
+        disp('critical error:');
+        logError(string(Message));
+        System.exit=1;
+        System.criticalError=1;
+    end
+
+end
+
+
+

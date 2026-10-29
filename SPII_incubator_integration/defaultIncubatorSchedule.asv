@@ -1,0 +1,89 @@
+global Devices FileInfo
+
+Devices.Incubator.TaskList = {
+     0,'Temperature',37
+     0,'CO2',5
+     0,'O2',20
+  1/60,'O2',15
+  2/60,'Temperature',36
+  3/60,'O2',20
+  4/60,'O2',15
+  5/60,'Temperature',36
+  6/60,'O2',20
+  1,'EndOfExperiment',NaN
+};
+disp('incubator schedule loaded');
+
+%disp(num2str(Devices.Incubator.TaskList));
+global Devices
+
+
+
+%% Extract schedule
+taskList = Devices.Incubator.TaskList;
+
+% Experiment end time
+endIdx = strcmp(taskList(:,2),'EndOfExperiment');
+tEnd = taskList{endIdx,1}/3600;
+
+% Parameters present in schedule
+allPar = unique(taskList(~endIdx,2));
+
+%% Create figure
+hFig = figure('Name','Incubator Schedule',...
+              'NumberTitle','off');
+
+for p = 1:numel(allPar)
+
+    param = allPar{p};
+
+    % Rows belonging to this parameter
+    idx = strcmp(taskList(:,2),param);
+
+    t = cell2mat(taskList(idx,1));
+    v = cell2mat(taskList(idx,3));
+
+    % Extend to experiment end
+    t = [t; tEnd];
+    v = [v; v(end)];
+
+    subplot(numel(allPar),1,p)
+    stairs(t,v,'LineWidth',2)
+    grid on
+    ylabel(param)
+
+    if p == 1
+        title('Incubator Parameter Schedule')
+    end
+
+    if p == numel(allPar)
+        xlabel('Time (hours)')
+    end
+end
+
+%% Ask for approval
+reply = questdlg( ...
+    'Is the displayed schedule correct?', ...
+    'Schedule Verification', ...
+    'OK','Cancel','OK');
+
+if strcmp(reply,'OK')
+
+    % Filename can be provided later in your script
+    saveName = [FileInfo.fname '-Incubator_schedule'];   % replace later
+
+    exportgraphics(hFig,[saveName '.png'],...
+        'Resolution',300);
+
+    disp(['Figure saved as ' saveName '.png']);
+
+else
+
+    disp('Schedule rejected, figure not saved.');
+
+end
+
+%% Close figure and continue
+close(hFig);
+record_incubator_values(0)
+disp('Continuing experiment setup...');

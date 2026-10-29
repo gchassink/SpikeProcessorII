@@ -1,0 +1,59 @@
+function callbackStartRecording(source,event)
+    %% start recording
+    % Checks if filename are correct and makes sure that no other data files
+    % are overwritten.
+    % Furthermore creates a recording on file to make sure that recording
+    % continues after an unexpected reboot of Windows.
+    global System FileInfo Figures
+    if source.Value == 3 % start recording
+        if FileInfo.fname ~= ""
+            if exist([FileInfo.fname, num2str(floor(FileInfo.file_series),'%04.f'),'.mat'],'file')
+                if FileInfo.adaptertype~="Raw reader"
+                msgbox('Previous run exists, automatically generated new filename');
+                FileInfo.fname=[FileInfo.fname '-restarted-'];
+                end
+
+            set(findobj(source.Parent.Children,'Tag','Fnamefld'),'Enable','Off');
+
+            set(findobj(source.Parent.Children,'Tag','testbtn'),'Enable','On');
+
+            if isfield(FileInfo, 'fileISI')
+                set(findobj(source.Parent.Children,'Tag','stimbtn'),'Enable','On');
+            end
+            set(source,'String','Recording','Max',2,'BackgroundColor','red');
+            %set(findobj(source.Parent.Children,'Tag','stimbtn'),'BackgroundColor','red');
+            System.dacqstatus=source.Value;
+            FileInfo.StartTime=clock;
+            FileInfo = initialize_file([FileInfo.fname num2str(floor(FileInfo.file_series),'%04.f')], FileInfo);
+            if System.rawrecordlength>1
+                System = initialize_raw_file([System.rname num2str(floor(FileInfo.file_series),'%04.f') '-' num2str(floor(System.raw_series),'%02.f')], System, FileInfo);
+            end
+
+
+
+        
+        else
+            msgbox('Please enter a filename');
+            return
+        end
+        disp ('recording started');
+        save('recording_on.mat',"FileInfo","System" );
+        % Rename File to Create M File
+          movefile('startup.txt','startup.m', 'f');
+          
+       set( findobj(Figures.fig_init.Children,'-regexp','tag','[^'']'),'Enable','Off'); 
+    end
+    if source.Value == 2 % stop recording
+        set(source,'String','Start Recording','Max',3,'BackgroundColor','yellow');
+        
+        set(findobj(source.Parent.Children,'Tag','Fnamefld'),'Enable','On');
+        set(findobj(source.Parent.Children,'Tag','testbtn'),'Enable','Off');
+        System.dacqstatus=source.Value;
+        mat = matfile([FileInfo.Name '.mat'],'Writable',true);
+        time=clock;
+        FileInfo.EndTime=[int2str(time(4)),':',int2str(time(5)),':',int2str(time(6))];
+        mat.FileInfo=FileInfo;
+        recordingIsOff;
+        set( findobj(Figures.fig_init.Children,'-regexp','tag','[^'']'),'Enable','On'); 
+    end
+end

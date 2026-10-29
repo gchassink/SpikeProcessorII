@@ -1,0 +1,149 @@
+%% plot_data
+% Updates plots and data in the main screen depending on the value of plottype:
+%       1 = No updates, clear memory of other plots
+%       2 = Show rasterplot
+%       3 = Show last 10 Waveshapes of the selected channel
+%       4 = Show raw data of the selected channel
+%       5 = Show stimulus repsonses of the selected channel (only if stimulation is inititiated)
+%       6 = Show information of 13 additional channels (Data2):
+%               0  - 59 Elektrode Channels (Data1)
+%               60 - 67 Data2(1:8) IFB Analog IFB channels
+%               68      Data2(9)Digital In/Out
+%               69 - 74 Data2(10:13)Sideband channels and checksumchannels?
+%                       our system reads only untl channel 13
+%               75 - 76 Checksum channels
+global System FileInfo Figures
+AWFR(floor(FileInfo.RecordingTime/FileInfo.Samplerate)+1,1)=double(length(CsBuffered));
+T_Log(floor(FileInfo.RecordingTime/FileInfo.Samplerate)+1,:)=mean(FileInfo.TemperatureLog,1); 
+switch System.plottype
+    
+
+    case 2 % rasterplot
+        Waves=update_waveplot(Waves,CsBuffered,UsBuffered,0,10,FileInfo.channelorder);
+        Ras = update_raster(Ras,CsBuffered,System.rasterlayout,1);
+        title('Rasterplot');
+        xlabel(['Total Time = ',int2str(size(Ras,2)/2),' seconds']);
+        %xlabel(['Total Time = ',int2str((System.blocksize/FileInfo.Samplerate)*length(Ras)/2),' seconds']);
+        ylabel('Channel');
+        update_buttons(btn_channel,Ras,FileInfo.channelorder,System.rasterlayout, System.noisevalues,System.indicatorSet)
+    
+    case 3 % Waveshapes
+        Ras = update_raster(Ras,CsBuffered,System.rasterlayout,0);
+        Waves=update_waveplot(Waves,CsBuffered,UsBuffered,System.channeldisp,10,FileInfo.channelorder);
+        title(['Waveforms of channel ' int2str(FileInfo.channelorder(System.channeldisp))]);
+        xlabel('Samplenumber');
+        ylabel('Amplitude (\muV)');
+        update_buttons(btn_channel,Ras,FileInfo.channelorder,System.rasterlayout, System.noisevalues,System.indicatorSet)
+    
+    case 4 % Raw Data
+        Ras = update_raster(Ras,CsBuffered,System.rasterlayout,0); % the Cs's of that time second
+        Waves=update_waveplot(Waves,CsBuffered,UsBuffered,0,10,FileInfo.channelorder);
+        thresholdplot=[];
+        RawDataPlot
+        
+        update_buttons(btn_channel,Ras,FileInfo.channelorder,System.rasterlayout, System.noisevalues,System.indicatorSet)
+    
+    case 5 % Raw Data +detected spikes
+        Ras = update_raster(Ras,CsBuffered,System.rasterlayout,0); % the Cs's of that time second
+        Waves=update_waveplot(Waves,CsBuffered,UsBuffered,0,10,FileInfo.channelorder);
+        thresholdplot=[];
+        if FileInfo.Matlab>2020
+        RawDataAndDetectedSpikesPlot
+        
+
+        end
+        
+        update_buttons(btn_channel,Ras,FileInfo.channelorder,System.rasterlayout, System.noisevalues,System.indicatorSet)
+
+    case 6 % raw data per well
+        Ras = update_raster(Ras,CsBuffered,System.rasterlayout,0); % the Cs's of that time second
+        Waves=update_waveplot(Waves,CsBuffered,UsBuffered,0,10,FileInfo.channelorder);
+        thresholdplot=[];
+        if FileInfo.Matlab>2020
+        
+        RawDataPerWellPlot
+        burstIndex=BurstPlot(burstIndex,TsBuffered,CsBuffered,FileInfo.Samplerate,FileInfo.RecordingTime,System.channeldisp,FileInfo.channelorder,Ras);
+
+        end
+        
+        update_buttons(btn_channel,Ras,FileInfo.channelorder,System.rasterlayout, System.noisevalues,System.indicatorSet)
+
+    case 7 % AWFR plot
+        Ras = update_raster(Ras,CsBuffered,System.rasterlayout,0); % the Cs's of that time second
+        Waves=update_waveplot(Waves,CsBuffered,UsBuffered,0,10,FileInfo.channelorder);
+        thresholdplot=[];
+        if FileInfo.RecordingTime/(FileInfo.Samplerate)>(60-1)
+            if mod(FileInfo.RecordingTime,FileInfo.Samplerate*60)==0
+                perMin=floor(size(AWFR,1)/60);
+
+                AWFRperMinute=sum(reshape(AWFR(1:perMin*60,1),60,perMin));
+            end
+            if exist('AWFRperMinute')
+
+            plot((1:length(AWFRperMinute))/60,AWFRperMinute/double(System.WellSize),'o');
+            ylim([0 mean(AWFRperMinute/double(System.WellSize))*2]);
+            title(['Firing rate ' int2str(FileInfo.channelorder(System.channeldisp))]);
+            xlabel('time (h)');
+            end
+        end
+        update_buttons(btn_channel,Ras,FileInfo.channelorder,System.rasterlayout, System.noisevalues,System.indicatorSet)
+
+
+    case 8 %Stimulus responses
+        Ras = update_raster(Ras,CsBuffered,System.rasterlayout,0);
+        Waves=update_waveplot(Waves,CsBuffered,UsBuffered,0,10,FileInfo.channelorder);
+        if isfield(FileInfo, 'StimOrder') % incase people choose plottype 5 without initiating a stimulation
+            
+        meanSr = update_stim_resp_plot(meanSr,System.edges,FileInfo.StimOrder,System.Sr,System.channeldisp, FileInfo.channelorder);
+        end
+        title(['Responses of stimulated channel ' int2str(FileInfo.channelorder(System.channeldisp))]);
+        xlabel('time (ms)');
+        ylabel('counts per 5 ms bin');
+        
+        update_buttons(btn_channel,Ras,FileInfo.channelorder,System.rasterlayout, System.noisevalues,System.indicatorSet)
+    
+    case 9 % environmental data
+         Ras = update_raster(Ras,CsBuffered,System.rasterlayout,0);
+        Waves=update_waveplot(Waves,CsBuffered,UsBuffered,0,10,FileInfo.channelorder);
+        thresholdplot=[];
+       % plot(FileInfo.TemperatureLog');
+         plot((2: size(T_Log,1))/3600,T_Log(2:end,1),'DisplayName', 'MEA Temp'); hold on
+         plot(FileInfo.IncubatorLog.Time/3600,FileInfo.IncubatorLog.Temperature,'DisplayName', 'Inc. Temp'); hold on
+         plot(FileInfo.IncubatorLog.Time/3600,FileInfo.IncubatorLog.O2,'DisplayName', 'O2'); hold on
+         plot(FileInfo.IncubatorLog.Time/3600,FileInfo.IncubatorLog.CO2*10,'DisplayName', 'CO2(%/10)'); hold on
+         plot(FileInfo.IncubatorLog.Time/3600,FileInfo.IncubatorLog.Humidity,'DisplayName', 'Humidity'); hold on
+         plot(FileInfo.IncubatorLog.Time/3600,FileInfo.incToc*100,'DisplayName', 'delay(*10ms)'); hold on
+         plot((2: length(FileInfo.latency)/(103600,FileInfo.latency,'DisplayName', 'latency'); hold on
+
+        xlabel('time (h)');
+        legend();
+        %ylabel('temperature (C)');
+        %ylim( [20 50]);
+        update_buttons(btn_channel,Ras,FileInfo.channelorder,System.rasterlayout, System.noisevalues,System.indicatorSet)
+
+    case 10 %Raw Sideband Data
+        Ras = update_raster(Ras,CsBuffered,System.rasterlayout,0); % the Cs's of that time second
+        Waves=update_waveplot(Waves,CsBuffered,UsBuffered,0,10,FileInfo.channelorder);
+        thresholdplot=[];
+        
+        
+        additionalChannel=9;
+                % 0 - 59:   Elektrode Channels
+                % 60 - 67   Data2(1:8) IFB Analog IFB channels
+                % 68        Data2(9)Digital In/Out
+                % 69 - 74   Data2(10:13)Sideband channels and checksumchannels?
+                % our system reads only until channel 13
+                % 75 - 76   Checksum channels;
+                rawmean=mean(Raw2Buffered,2);
+        rawChannelData=transpose(Raw2Buffered(additionalChannel,:)-int32(rawmean));
+        %rawChannelData=transpose(Raw2Buffered-int32(rawmean));
+        X_Axes=(1:length(rawChannelData))/(double(FileInfo.Samplerate)/1000);
+        plot(X_Axes,rawChannelData);
+        ylim([-1000 1000]);
+        title(['Sideband data (Data2) ' int2str(additionalChannel)]);
+        xlabel('Time (ms)');
+        ylabel('value');
+        update_buttons(btn_channel,Ras,FileInfo.channelorder,System.rasterlayout, System.noisevalues,System.indicatorSet)
+     otherwise
+        disp('not valid');
+end
