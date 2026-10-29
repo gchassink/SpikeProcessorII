@@ -30,7 +30,7 @@ cleanupPreviousSession; % cleans up possible remnants of previous runs
 global  Devices test  System FileInfo Figures Tmr ; % All variables structs that will be used eventually
 System=struct; % contains all variabels used in programm for easy passing
 FileInfo=struct; % contains all variabels used in programm that need to be saved 
-FileInfo.AppVersion='2.6';% set your appVersion here as reference
+FileInfo.AppVersion='3.0.0';% set your appVersion here as reference
 
 initialize_variables; % intitialize variables
 
